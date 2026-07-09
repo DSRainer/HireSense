@@ -1,4 +1,9 @@
+'use server'
+
+import { feedbackSchema } from "@/constants";
 import { db } from "@/firebase/admin";
+import { google } from "@ai-sdk/google";
+import { generateText, Output } from "ai";
 
 export async function getInterviewByUserId(userId: string): Promise<Interview[] | null> {
     const interviews = await db.collection('interviews').where('userId', '==', userId).orderBy('createdAt', 'desc').get()
@@ -13,11 +18,11 @@ export async function getLatestInterview(params: GetLatestInterviewsParams): Pro
     const { userId, limit = 20 } = params;
 
     const interviews = await db
-    .collection('interviews')
-    .where('finalized', '==', true)
-    .where('userId', '!=', userId)
-    .limit(limit)
-    .get()
+        .collection('interviews')
+        .where('finalized', '==', true)
+        .where('userId', '!=', userId)
+        .limit(limit)
+        .get()
 
     return interviews.docs.map((doc) => ({
         id: doc.id,
@@ -29,4 +34,92 @@ export async function getInterviewById(id: string): Promise<Interview | null> {
     const interview = await db.collection('interviews').doc(id).get()
 
     return interview.data() as Interview | null;
+}
+
+export async function createFeedback(params: CreateFeedbackParams) {
+    const { interviewId, userId, transcript } = params;
+
+    try {
+        const formattedTranscript = transcript.map((sentence: { role: string; content: string; }) => (
+            `- ${sentence.role}: ${sentence.content}\n`
+        )).join('');
+
+        const { output: { totalScore, categoryScores, strengths, areasForImprovement, finalAssessment } } = await generateText({
+            model: google("gemini-2.5-flash"),
+            // 3. Wrap your schema in Output.object()
+            output: Output.object({
+                schema: feedbackSchema
+            }),
+            // 4. Pass the formatted transcript to the prompt
+            prompt: `
+                You are an AI interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories. Be thorough and detailed in your analysis. Don't be lenient with the candidate. If there are mistakes or areas for improvement, point them out.
+                Transcript:
+                ${formattedTranscript}
+
+                Please provide a JSON response with the following structure:
+                - totalScore: A single number (0-100) representing the overall performance
+                - categoryScores: An array of 5 objects, each with:
+                  - name: Exactly one of "Communication Skills", "Technical Knowledge", "Problem Solving", "Cultural Fit", "Confidence and Clarity"
+                  - score: A number (0-100) for that category
+                  - comment: A detailed feedback string for that category
+                - strengths: An array of strings listing the candidate's strengths
+                - areasForImprovement: An array of strings listing areas to improve
+                - finalAssessment: A string with overall assessment
+
+                Score the candidate in these exact categories:
+                - Communication Skills: Clarity, articulation, structured responses
+                - Technical Knowledge: Understanding of key concepts for the role
+                - Problem Solving: Ability to analyze problems and propose solutions
+                - Cultural Fit: Alignment with company values and job role
+                - Confidence and Clarity: Confidence in responses, engagement, and clarity
+            `,
+            system: "You are a professional interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories",
+            providerOptions: {
+                google: {
+                    structuredOutputs: false,
+                }
+            }
+        })
+
+        const feedback = await db.collection('feedback').add({
+            interviewId,
+            userId,
+            totalScore,
+            categoryScores,
+            strengths,
+            areasForImprovement,
+            finalAssessment,
+            createdAt: new Date().toISOString()
+        })
+
+        return {
+            success: true,
+            feedbackId: feedback.id
+        }
+
+    } catch (e) {
+        console.error('Error saving feedback', e)
+
+        return { success: false }
+    }
+}
+
+export async function getFeedbackByInterviewId(params: GetFeedbackByInterviewIdParams): Promise<Feedback | null> {
+    const { interviewId, userId } = params;
+
+    const feedback = await db
+        .collection('feedback')
+        .where('interviewId', '==', interviewId)
+        .where('userId', '==', userId)
+        .limit(1)
+        .get()
+    
+    if(feedback.empty) return null;
+
+    const feedbackDoc = feedback.docs[0];
+
+    return {
+        id: feedbackDoc.id, ...feedbackDoc.data()
+    } as Feedback
+
 }
