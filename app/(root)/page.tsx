@@ -1,7 +1,7 @@
 import InterviewCard from "@/components/InterviewCard"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/actions/auth.action"
-import {getInterviewByUserId, getLatestInterview} from "@/lib/actions/general.action";
+import { getInterviewByUserId, getLatestInterview } from "@/lib/actions/general.action";
 import Image from "next/image"
 import Link from "next/link"
 
@@ -51,7 +51,7 @@ const Page = async () => {
         <div className="interviews-section">
           {hasPastInterviews ? (
             userInterviews?.map((interview) => (
-              <InterviewCard key={interview.id} {...interview} />
+              <InterviewCard key={interview.id} {...interview} currentUserId={user.id} />
             ))) : (
             <p>You haven&apos;t taken any interviews yet</p>
           )}
@@ -63,7 +63,7 @@ const Page = async () => {
         <div className="interviews-section">
           {hasUpcomingInterview ? (
             latestInterviews?.map((interview) => (
-              <InterviewCard key={interview.id} {...interview} />
+              <InterviewCard key={interview.id} {...interview} currentUserId={user.id} />
             ))) : (
             <p>There no new interview available. Sorry!</p>
           )}

@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 
 const ONE_WEEK = 60 * 60 * 24 * 7;
 
-export async function signUp (params: SignUpParams) {
+export async function signUp(params: SignUpParams) {
     const { uid, name, email } = params;
 
     try {
@@ -26,9 +26,9 @@ export async function signUp (params: SignUpParams) {
             message: 'Account created successfully! Please Sign In.'
         }
 
-    } catch(error: any) {
+    } catch (error: any) {
         console.error("Error creating a user", error)
-        if(error.code === 'auth/email-already-exists') {
+        if (error.code === 'auth/email-already-exists') {
             return {
                 success: false,
                 message: 'This email is already in use by another account'
@@ -48,10 +48,10 @@ export async function signIn(params: SignInParams) {
     try {
         const userRecord = await auth.getUserByEmail(email);
 
-        if(!userRecord){
+        if (!userRecord) {
             return {
-            success: false,
-            message: 'User does not exist. Create Account!'
+                success: false,
+                message: 'User does not exist. Create Account!'
             }
         }
 
@@ -81,18 +81,18 @@ export async function setSessionCookie(idToken: string) {
     })
 }
 
-export async function getCurrentUser(): Promise<User | null>{
+export async function getCurrentUser(): Promise<User | null> {
     const cookieStore = await cookies()
-    
+
     const sessionCookie = cookieStore.get("session")?.value;
-    if(!sessionCookie) return null;
+    if (!sessionCookie) return null;
 
     try {
         const decodedClaims = await auth.verifySessionCookie(sessionCookie, true);
 
         const userRecord = await db.collection('users').doc(decodedClaims.uid).get();
-        
-        if(!userRecord) return null;
+
+        if (!userRecord) return null;
 
         return {
             ...userRecord.data(),
@@ -110,6 +110,16 @@ export async function isAuthenticated() {
     return !!user;
 }
 
+export async function signOut() {
+    const cookieStore = await cookies();
+
+    cookieStore.delete('session');
+
+    return {
+        success: true
+    }
+}
+
 export async function getInterviewByUserId(userId: string): Promise<Interview[] | null> {
     const interviews = await db.collection('interviews').where('userId', '==', userId).orderBy('createdAt', 'desc').get()
 
@@ -123,11 +133,11 @@ export async function getLatestInterview(params: GetLatestInterviewsParams): Pro
     const { userId, limit = 20 } = params;
 
     const interviews = await db
-    .collection('interviews')
-    .where('finalized', '==', true)
-    .where('userId', '!=', userId)
-    .limit(limit)
-    .get()
+        .collection('interviews')
+        .where('finalized', '==', true)
+        .where('userId', '!=', userId)
+        .limit(limit)
+        .get()
 
     return interviews.docs.map((doc) => ({
         id: doc.id,

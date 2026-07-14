@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { vapi } from '@/lib/vapi.sdk';
 import { interviewer } from "@/constants";
 import { createFeedback } from "@/lib/actions/general.action";
@@ -26,6 +26,8 @@ const Agent = ({ userName, userId, type, interviewId, questions }: AgentProps) =
     const [isSpeaking, setIsSpeaking] = useState(false)
     const [callStatus, setCallStatus] = useState(CallStatus.INACTIVE);
     const [message, setMessage] = useState<SavedMessage[]>([])
+    const [isGeneratingFeedback, setIsGeneratingFeedback] = useState(false)
+    const hasGeneratedFeedback = useRef(false)
 
     useEffect(() => {
         const onCallStart = () => setCallStatus(CallStatus.ACTIVE);
@@ -61,15 +63,16 @@ const Agent = ({ userName, userId, type, interviewId, questions }: AgentProps) =
         }
     }, [])
 
-    const handleGenerateFeedback = async(message: SavedMessage[]) => {
+    const handleGenerateFeedback = async (message: SavedMessage[]) => {
+        setIsGeneratingFeedback(true);
         const { success, feedbackId: id } = await createFeedback({
             interviewId: interviewId!,
             userId: userId!,
             transcript: message
         })
-        if(success && id) {
+        if (success && id) {
             router.push(`/interview/${interviewId}/feedback`);
-        }else{
+        } else {
             console.log('Error saving feedback');
             router.push("/");
         }
@@ -77,18 +80,19 @@ const Agent = ({ userName, userId, type, interviewId, questions }: AgentProps) =
 
     useEffect(() => {
         if (callStatus === CallStatus.FINISHED) {
-            if(type === "generate") {
+            if (type === "generate") {
                 router.push('/')
-            }else {
+            } else if (!hasGeneratedFeedback.current) {
+                hasGeneratedFeedback.current = true
                 handleGenerateFeedback(message)
             }
-        } 
+        }
     }, [message, callStatus, type, userId])
 
     const handleCall = async () => {
         setCallStatus(CallStatus.CONNECTING)
 
-        if(type === "generate") {
+        if (type === "generate") {
             await vapi.start(process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!, {
                 variableValues: {
                     username: userName,
@@ -98,7 +102,7 @@ const Agent = ({ userName, userId, type, interviewId, questions }: AgentProps) =
         } else {
             let formattedQuestions = "";
 
-            if(questions){
+            if (questions) {
                 formattedQuestions = questions.map((question) => `- ${question}`).join('\n');
             }
             await vapi.start(interviewer, {
@@ -146,6 +150,22 @@ const Agent = ({ userName, userId, type, interviewId, questions }: AgentProps) =
                 </div>
             )}
 
+            {isGeneratingFeedback && (
+                <div
+                    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="feedback-generation-title"
+                    aria-describedby="feedback-generation-desc"
+                >
+                    <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4 max-w-md">
+                        <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+                        <p id="feedback-generation-title" className="text-gray-700 font-medium text-center">Analyzing your interview...</p>
+                        <p id="feedback-generation-desc" className="text-gray-600 text-sm text-center">Please wait while we generate your feedback!</p>
+                    </div>
+                </div>
+            )}
+
             {message.length > 0 && (
                 <div className="transcript-border">
                     <div className="transcript">
@@ -162,7 +182,11 @@ const Agent = ({ userName, userId, type, interviewId, questions }: AgentProps) =
 
             <div className="w-full flex justify-center">
                 {callStatus !== "ACTIVE" ? (
-                    <button className="relative btn-call" onClick={handleCall}>
+                    <button
+                        className="relative btn-call"
+                        onClick={handleCall}
+                        disabled={isGeneratingFeedback}
+                    >
                         <span className={cn("absolute animate-ping rounded-full opacity-75", callStatus !== "CONNECTING" && "hidden")}
                         />
                         <span className="relative">
@@ -170,7 +194,11 @@ const Agent = ({ userName, userId, type, interviewId, questions }: AgentProps) =
                         </span>
                     </button>
                 ) : (
-                    <button className="btn-disconnect" onClick={handleDisconnect}>
+                    <button
+                        className="btn-disconnect"
+                        onClick={handleDisconnect}
+                        disabled={isGeneratingFeedback}
+                    >
                         End
                     </button>
                 )}
